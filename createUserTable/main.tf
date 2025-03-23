@@ -12,7 +12,7 @@ resource "azurerm_linux_function_app" "createUserTable" {
   webdeploy_publish_basic_authentication_enabled = false
   app_settings = {
     "WEBSITE_ENABLE_SYNC_UPDATE_SITE" = "true"
-    "WEBSITE_RUN_FROM_PACKAGE"        = "https://seekerinfrastorage.blob.core.windows.net/github-actions-deploy/Functionapp_2025323215419739.zip?sv=2023-11-03&st=2025-03-23T21%3A49%3A20Z&se=2026-03-23T21%3A54%3A20Z&sr=b&sp=r&sig=SEyKj8Khisr77oryL2s43jlh2Vvw%2BKyPrjRG8W162YA%3D"
+    "WEBSITE_RUN_FROM_PACKAGE"        = var.website_run_from_package
   }
   site_config {
     always_on = false
