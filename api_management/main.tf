@@ -36,12 +36,12 @@ resource "azurerm_api_management_subscription" "seeker_subscription" {
 }
 
 resource "azurerm_api_management_api" "seeker_functions" {
-  name                = "seeker-functions"
+  name                = "seeker"
   api_management_name = azurerm_api_management.seeker_apim.name
   resource_group_name = azurerm_api_management.seeker_apim.resource_group_name
   revision            = "1"
-  display_name        = "seeker-functions"
-  path                = "seeker-functions"
+  display_name        = "seeker"
+  path                = "seeker"
   protocols           = ["https"]
   service_url         = "https://${data.azurerm_linux_function_app.seeker_functions.default_hostname}"
 }
