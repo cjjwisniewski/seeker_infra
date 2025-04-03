@@ -1,0 +1,101 @@
+<policies>
+    <inbound>
+        <base />
+        <set-variable name="originalToken" value="@(context.Request.Headers.GetValueOrDefault("Authorization",""))" />
+        <send-request mode="new" response-variable-name="discordValidationResponse" timeout="20" ignore-error="true">
+            <set-url>https://discord.com/api/oauth2/@me</set-url>
+            <set-method>GET</set-method>
+            <set-header name="Authorization" exists-action="override">
+                <value>@(context.Request.Headers.GetValueOrDefault("Authorization",""))</value>
+            </set-header>
+        </send-request>
+        <set-variable name="discordResponseStatus" value="@(context.Variables.ContainsKey("discordValidationResponse") ? ((IResponse)context.Variables["discordValidationResponse"]).StatusCode.ToString() : "No Response")" />
+        <set-variable name="discordResponseBodyForDebug" value="@{
+            if (context.Variables.ContainsKey("discordValidationResponse")) {
+                var response = (IResponse)context.Variables["discordValidationResponse"];
+                // Only attempt to read body if status is NOT 200, as the 200 path will read it.
+                if (response.StatusCode != 200 && response.Body != null) {
+                    // Use preserveContent=true when reading here too for safety
+                    return response.Body.As<string>(preserveContent: true)?.Substring(0, 500) ?? "Body unreadable";
+                }
+                return "Body not read for non-error status or will be read later.";
+            }
+            return "No Response Variable";
+        }" />
+        <choose>
+            <when condition="@(context.Variables.ContainsKey("discordValidationResponse") && ((IResponse)context.Variables["discordValidationResponse"]).StatusCode == 200)">
+                <set-variable name="discordResponse" value="@((IResponse)context.Variables["discordValidationResponse"])" />
+                <set-variable name="discordUser" value="@{
+                    var response = (IResponse)context.Variables["discordResponse"];
+                    // Add explicit check for null body before attempting to read it
+                    if (response?.Body == null) 
+                    {
+                        return null; 
+                    }
+                    // Attempt parsing. Returns null if body is empty or invalid JSON.
+                    return response.Body.As<JObject>(preserveContent: true); 
+                }" />
+                <choose>
+                    <when condition="@(context.Variables["discordUser"] != null && ((JObject)context.Variables["discordUser"])["user"]?["id"] != null)">
+                        <set-header name="x-ms-client-principal-id" exists-action="override">
+                            <value>@("user" + ((JObject)context.Variables["discordUser"])["user"]["id"].ToString())</value>
+                        </set-header>
+                    </when>
+                    <otherwise>
+                        <return-response>
+                            <set-status code="502" reason="Bad Gateway" />
+                            <set-header name="Content-Type" exists-action="override">
+                                <value>application/json</value>
+                            </set-header>
+                            <set-body>@{
+                                // Try to log the problematic body snippet if possible
+                                var bodySnippet = "Unknown parsing failure or missing user.id";
+                                try { 
+                                     bodySnippet = ((IResponse)context.Variables["discordResponse"])?.Body?.As<string>(preserveContent: true)?.Substring(0, 500) ?? "Body was null or unreadable";
+                                } catch {} // Ignore logging errors
+                                return new JObject(
+                                    new JProperty("statusCode", 502),
+                                    // MODIFIED Message: Clarify expected path
+                                    new JProperty("message", "Failed to parse valid user data from Discord response (expected 'user.id' field missing?)."), 
+                                    new JProperty("debug", new JObject(
+                                        new JProperty("discordStatus", context.Variables["discordResponseStatus"]),
+                                        new JProperty("discordResponsePartialBody", bodySnippet)
+                                    ))
+                                ).ToString();
+                            }</set-body>
+                        </return-response>
+                    </otherwise>
+                </choose>
+            </when>
+            <otherwise>
+                <return-response>
+                    <set-status code="401" reason="Unauthorized" />
+                    <set-header name="WWW-Authenticate" exists-action="override">
+                        <value>Bearer error="invalid_token"</value>
+                    </set-header>
+                    <set-body>@{
+                        // Use the debug body variable captured earlier
+                        return new JObject(
+                            new JProperty("statusCode", 401),
+                            new JProperty("message", "Invalid Discord token."),
+                            new JProperty("debug", new JObject(
+                                new JProperty("originalToken", context.Variables["originalToken"]),
+                                new JProperty("discordStatus", context.Variables["discordResponseStatus"]),
+                                new JProperty("discordResponse", context.Variables["discordResponseBodyForDebug"]) // Use the safe debug body
+                            ))
+                        ).ToString();
+                    }</set-body>
+                </return-response>
+            </otherwise>
+        </choose>
+    </inbound>
+    <backend>
+        <base />
+    </backend>
+    <outbound>
+        <base />
+    </outbound>
+    <on-error>
+        <base />
+    </on-error>
+</policies>

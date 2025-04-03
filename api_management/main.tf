@@ -3,7 +3,7 @@
 ##########################################################################
 
 resource "azurerm_api_management" "seeker_apim" {
-  name                = "seeker-apim"
+  name                = "seeker"
   location            = data.azurerm_resource_group.seeker_rg.location
   resource_group_name = data.azurerm_resource_group.seeker_rg.name
   publisher_name      = "City of Traitors"
